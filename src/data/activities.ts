@@ -19,3 +19,8 @@ export const ACTIVITIES: ActivityType[] = [
 
 export const KM_CHOICES = [1, 2, 3, 5, 10]
 export const MINUTE_CHOICES = [10, 15, 20, 30, 45, 60]
+
+/** The walk planned every day. Gentle default for beginners; changeable in the weekly plan. */
+export const DEFAULT_DAILY_WALK = { enabled: true, minutes: 20 }
+export const dailyWalkPlan = (p: { dailyWalk?: { enabled: boolean; minutes: number } }) => p.dailyWalk ?? DEFAULT_DAILY_WALK
+export const WALK_TARGETS = [15, 20, 30, 45, 60]

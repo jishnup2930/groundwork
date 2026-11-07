@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, Pencil, Trash2 } from 'lucide-react'
 import { Figure } from '../components/Figure'
+import { ExerciseDemo } from '../components/ExerciseDemo'
 import { Scene } from '../components/Scene'
 import { SCENE_FOR_CATEGORY } from '../data/scenes'
 import { Confirm, Segmented, attempt } from '../components/ui'
@@ -77,13 +78,11 @@ export function WorkoutDetail() {
                   <span className="block text-lg font-semibold">{e.name}</span>
                   <span className="num block text-sm text-ink-soft">{amount(e)}, {e.restDuration}s rest. {e.muscleGroup}</span>
                 </span>
-                <span className="text-sm font-semibold text-moss group-open:hidden">Details</span>
+                <span className="text-sm font-semibold text-moss group-open:hidden">Show me how</span>
                 <span className="hidden text-sm font-semibold text-moss group-open:inline">Hide</span>
               </summary>
-              <div className="pb-6 sm:pl-26">
-                {e.description && <p className="text-ink-soft">{e.description}</p>}
-                {e.instructions.length > 0 && <ol className="mt-3 list-decimal space-y-1.5 pl-5">{e.instructions.map((s) => <li key={s}>{s}</li>)}</ol>}
-                {e.modification && <p className="mt-3 text-ink-soft"><span className="font-semibold text-ink">Make it easier: </span>{e.modification}</p>}
+              <div className="pb-6">
+                <ExerciseDemo exercise={e} />
               </div>
             </details>
           </li>

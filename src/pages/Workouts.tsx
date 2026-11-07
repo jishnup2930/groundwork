@@ -2,9 +2,10 @@ import { Link } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { Scene } from '../components/Scene'
 import { SCENE_FOR_CATEGORY } from '../data/scenes'
-import { Empty, PageHeader, attempt } from '../components/ui'
+import { Empty, PageHeader, attempt, radioKeys, rovingTab } from '../components/ui'
 import { useCustomWorkouts, useProfile, useSchedules, useToday } from '../hooks/useData'
-import { setSchedule } from '../lib/db'
+import { setSchedule, updateProfile } from '../lib/db'
+import { dailyWalkPlan, WALK_TARGETS } from '../data/activities'
 import { DAY_NAMES, weekday } from '../lib/dates'
 import { BUILT_IN, CATEGORY_LABEL, scaleForLevel } from '../data/workouts'
 import type { Workout } from '../types'
@@ -37,6 +38,7 @@ export function Workouts() {
 
   const week = schedules[schedules.length - 1]?.days ?? Array(7).fill(null)
   const all = [...BUILT_IN, ...custom]
+  const walk = dailyWalkPlan(profile)
   const change = (day: number, id: string) => {
     const next = [...week]
     next[day] = id || null
@@ -75,6 +77,24 @@ export function Workouts() {
             )
           })}
         </ul>
+        <div className="mt-5 rounded-2xl bg-mint p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold">Daily walk</p>
+              <p className="text-sm text-ink-soft">Planned every day, alongside the workout. Ticked off from Home.</p>
+            </div>
+            <div role="radiogroup" aria-label="Daily walk" onKeyDown={radioKeys} className="flex flex-wrap gap-2">
+              {[0, ...WALK_TARGETS].map((m, i) => {
+                const on = m === 0 ? !walk.enabled : walk.enabled && walk.minutes === m
+                return (
+                  <button key={m} role="radio" aria-checked={on} tabIndex={rovingTab(on, i, true)}
+                    onClick={() => attempt(() => updateProfile({ dailyWalk: m === 0 ? { ...walk, enabled: false } : { enabled: true, minutes: m } }), m === 0 ? 'Daily walk turned off' : `Daily walk set to ${m} minutes`)}
+                    className={`chip min-h-10 px-4 text-sm ${on ? 'bg-forest text-on-forest' : 'bg-linen text-ink'}`}>{m === 0 ? 'Off' : `${m} min`}</button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
         {week.some((id) => id && !all.find((w) => w.id === id)) && <p className="mt-3 text-sm text-clay">One of these days points to a workout that no longer exists. Pick another for it.</p>}
       </section>
 

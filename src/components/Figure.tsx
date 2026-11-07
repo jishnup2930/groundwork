@@ -32,7 +32,7 @@ export const MOVES: Record<string, Move> = {
   kneeRaise: { a: HIPS, b: with_(HIPS, { 8: [78,55], 9: [77,74] }) },
   birdDog: { a: FOURS, b: with_(FOURS, { 4: [88,62], 5: [101,60], 10: [29,69], 11: [10,68] }) },
   lunge: { a: STAND, b: [59.5,27, 59,36, 58.5,50, 58,64, 60,49, 61,62, 58,49, 57,62, 75,73, 75,91, 49,83, 32,90] },
-  calfRaise: { a: STAND, b: shift(STAND, -4) },
+  calfRaise: { a: STAND, b: shift(STAND, -7) }, // rises onto the toes; the floor line shows the lift
   sideLeg: { a: FRONT, b: with_(FRONT, { 0: [57,16], 1: [58,25], 10: [76,66], 11: [90,78] }) },
   inclinePush: {
     prop: 'bench',
@@ -47,7 +47,7 @@ export const MOVES: Record<string, Move> = {
   catCow: { a: with_(FOURS, { 0: [82,70], 2: [61,57] }), b: with_(FOURS, { 0: [85,56], 2: [61,72] }) },
   childsPose: {
     a: [80,86, 73,84, 60,77, 46,82, 86,90, 99,90, 85,89, 98,89, 62,90, 44,91, 60,90, 42,91],
-    b: [80,86, 73,84, 60,75, 46,82, 86,90, 99,90, 85,89, 98,89, 62,90, 44,91, 60,90, 42,91],
+    b: [80,86, 73,84, 60,72, 46,82, 86,90, 99,90, 85,89, 98,89, 62,90, 44,91, 60,90, 42,91],
   },
   sideStretch: {
     a: with_(FRONT, { 4: [52,37], 5: [57,49], 6: [62,12], 7: [63,1] }),
@@ -57,7 +57,7 @@ export const MOVES: Record<string, Move> = {
     a: with_(FRONT, { 3: [55,53], 4: [50,38], 5: [55,51], 6: [70,38], 7: [65,51], 8: [54,72], 10: [61,72] }),
     b: with_(FRONT, { 3: [65,53], 4: [50,38], 5: [65,51], 6: [70,38], 7: [65,51], 8: [59,72], 10: [66,72] }),
   },
-  shoulderRolls: { a: FRONT, b: with_(FRONT, { 1: [60,22], 4: [53,34], 5: [51,47], 6: [67,34], 7: [69,47] }) },
+  shoulderRolls: { a: FRONT, b: with_(FRONT, { 0: [60,13], 1: [60,19], 4: [52,30], 5: [50,43], 6: [68,30], 7: [70,43] }) },
   deadBug: {
     a: with_(LYING, { 4: [32,73], 5: [33,60], 6: [34,73], 7: [35,60], 8: [63,68], 9: [80,68], 10: [65,68], 11: [82,68] }),
     b: with_(LYING, { 4: [20,78], 5: [9,82], 6: [34,73], 7: [35,60], 8: [63,68], 9: [80,68], 10: [77,80], 11: [95,85] }),
@@ -112,9 +112,11 @@ interface Props {
   title?: string
   /** ink: line drawing; paper: light lines on dark; scene: fuller figure for illustrated scenes */
   tone?: 'ink' | 'paper' | 'scene'
+  /** draw the floor line (default: on, except in scenes, which have their own ground) */
+  floor?: boolean
 }
 
-export function Figure({ move = 'stand', animate = false, className = '', title, tone = 'ink' }: Props) {
+export function Figure({ move = 'stand', animate = false, className = '', title, tone = 'ink', floor }: Props) {
   const reduced = useReducedMotion()
   const m = MOVES[move] ?? MOVES.stand
   const anim = animate && !reduced
@@ -133,7 +135,7 @@ export function Figure({ move = 'stand', animate = false, className = '', title,
   return (
     <svg viewBox="0 0 120 100" className={className} role={title ? 'img' : undefined} aria-hidden={title ? undefined : true}>
       {title && <title>{title}</title>}
-      {!scene && <line x1="4" y1="93.5" x2="116" y2="93.5" stroke="var(--color-rule)" strokeWidth="1.5" strokeLinecap="round" />}
+      {(floor ?? !scene) && <line x1="4" y1="93.5" x2="116" y2="93.5" stroke="var(--color-rule)" strokeWidth="1.5" strokeLinecap="round" />}
       {m.prop === 'wall' && <line x1="96" y1="8" x2="96" y2="93" stroke="var(--color-rule)" strokeWidth="3" strokeLinecap="round" />}
       {m.prop === 'bench' && <rect x="84" y="71" width="24" height="22" rx="2" fill="var(--color-sand)" />}
       <g fill="none" stroke={line} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round">

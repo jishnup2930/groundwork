@@ -165,6 +165,30 @@ export async function logActivity(a: { id: string; label: string }, date: ISODat
 
 export const deleteSession = (id: string) => db.sessions.delete(id)
 
+/** The planned daily walk: one record per day, so ticking it twice can't duplicate it. */
+export const dailyWalkId = (date: ISODate) => `${date}:daily-walk`
+
+/** Tick or untick the day's planned walk. */
+export function toggleDailyWalk(date: ISODate, minutes: number) {
+  return db.transaction('rw', db.sessions, async () => {
+    const id = dailyWalkId(date)
+    if (await db.sessions.get(id)) return db.sessions.delete(id)
+    const now = Date.now()
+    await db.sessions.add({
+      id, workoutId: 'activity:walk', workoutName: 'Walk', category: 'activity', date,
+      startedAt: now, completedAt: now, duration: minutes * 60,
+      exercisesCompleted: 1, totalExercises: 1, completionStatus: 'completed', exercises: [],
+    })
+  })
+}
+
+/** Optionally record how far the planned walk went. Tapping the same distance again clears it. */
+export const setDailyWalkDistance = (date: ISODate, km: number) =>
+  db.transaction('rw', db.sessions, async () => {
+    const s = await db.sessions.get(dailyWalkId(date))
+    if (s) await db.sessions.put({ ...s, distanceKm: s.distanceKm === km ? undefined : km })
+  })
+
 export async function resetAll() {
   await db.transaction('rw', ALL_TABLES.map((t) => db.table(t)), async () => {
     await Promise.all(ALL_TABLES.map((t) => db.table(t).clear()))

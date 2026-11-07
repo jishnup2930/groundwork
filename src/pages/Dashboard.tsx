@@ -10,7 +10,9 @@ import { LogWorkout } from '../components/LogWorkout'
 import { AddActivity } from '../components/AddActivity'
 import { Confirm, Dialog, attempt } from '../components/ui'
 import type { WorkoutSession } from '../types'
-import { deleteSession } from '../lib/db'
+import { dailyWalkId, deleteSession } from '../lib/db'
+import { DailyWalk } from '../components/DailyWalk'
+import { dailyWalkPlan } from '../data/activities'
 import { formatLong } from '../lib/dates'
 import { currentStreak, weekStats } from '../lib/streak'
 import { CATEGORY_LABEL } from '../data/workouts'
@@ -61,6 +63,7 @@ export function Dashboard() {
   if (!profile || !history || !planned || !stats) return null
 
   const w = planned.workout
+  const walkPlan = dailyWalkPlan(profile)
   const todays = history.sessions.filter((s) => s.date === today && s.exercisesCompleted > 0)
   const activities = todays.filter((s) => s.category === 'activity')
   const planDone = w ? todays.find((s) => s.workoutId === w.id)?.completionStatus === 'completed' : false
@@ -138,7 +141,7 @@ export function Dashboard() {
                 <>
                   <span className="chip bg-sand text-ink-soft">Rest day</span>
                   <h2 id="today-title" className="mt-2 text-2xl font-semibold leading-tight">Recovery is part of the work</h2>
-                  <p className="mt-1 text-sm text-ink-soft">Nothing planned. A walk or some gentle stretching still counts.</p>
+                  <p className="mt-1 text-sm text-ink-soft">No workout today. Your daily walk or some gentle stretching still counts.</p>
                 </>
               )}
             </div>
@@ -152,11 +155,12 @@ export function Dashboard() {
           ) : (
             <div className="mt-4 flex flex-wrap gap-3">
               <Link to="/workouts/mobility" className="btn-ghost">Gentle mobility</Link>
-              <button className="btn bg-night text-on-forest hover:bg-ink" onClick={() => setAdding(true)}><Plus size={17} aria-hidden /> Add a walk</button>
             </div>
           )}
           {nudge && <p className="mt-4 rounded-2xl bg-apricot/15 px-4 py-3 text-sm text-ink">It’s past {prefs.reminder.time}, your reminder time. There’s still plenty of today left.</p>}
         </motion.section>
+
+        {walkPlan.enabled && <motion.div {...rise(0.12)}><DailyWalk date={today} minutes={walkPlan.minutes} /></motion.div>}
 
         {/* Anything else */}
         <motion.section {...rise(0.15)} aria-labelledby="extra-title" className="rounded-[1.75rem] bg-mint p-5">
@@ -169,9 +173,9 @@ export function Dashboard() {
               <Plus size={17} aria-hidden /> Add
             </motion.button>
           </div>
-          {activities.length > 0 && (
+          {activities.some((a) => a.id !== dailyWalkId(today)) && (
             <ul className="mt-3 flex flex-wrap gap-2" aria-label="Logged today">
-              {activities.map((a) => (
+              {activities.filter((a) => a.id !== dailyWalkId(today)).map((a) => (
                 <li key={a.id} className="chip min-h-9 bg-linen pr-1.5 text-ink">
                   <Check size={13} strokeWidth={3} className="text-forest" aria-hidden />
                   {a.workoutName} {a.distanceKm ? `${a.distanceKm} km` : `${Math.round(a.duration / 60)} min`}

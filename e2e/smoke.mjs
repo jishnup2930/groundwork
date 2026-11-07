@@ -43,6 +43,16 @@ await p.getByRole('radio', { name: '20 min' }).click()
 // Untick and re-tick one exercise: must still be a single record
 await p.locator('button[aria-pressed]').first().click()
 await p.locator('button[aria-pressed]').first().click()
+// Beginners: the ? next to an exercise opens an animated demo
+await p.getByRole('button', { name: /^How to do / }).first().click()
+await p.getByRole('img', { name: /Animated demonstration of/ }).waitFor()
+await p.waitForTimeout(900)
+await shot('08b-how-to')
+await p.keyboard.press('Escape')
+// The planned daily walk: one tap, optional distance
+await p.getByRole('button', { name: 'Tick off daily walk' }).click()
+await p.getByRole('radio', { name: '2 km' }).click()
+await p.getByText('Done, 2 km.', { exact: false }).waitFor()
 // Log a 10 km walk
 await p.getByRole('button', { name: 'Add', exact: true }).click()
 await p.getByRole('radio', { name: '10 km' }).click()
@@ -91,7 +101,7 @@ const greeting = await p.locator('h1').first().textContent()
 const sessionsCount = await p.evaluate(() => new Promise((res) => {
   const r = indexedDB.open('groundwork'); r.onsuccess = () => { const t = r.result.transaction('sessions').objectStore('sessions').count(); t.onsuccess = () => res(t.result) }
 }))
-console.log('after reload h1:', greeting, '| sessions:', sessionsCount, sessionsCount === 2 ? '(workout + walk, no duplicates)' : '(UNEXPECTED)')
+console.log('after reload h1:', greeting, '| sessions:', sessionsCount, sessionsCount === 3 ? '(workout + daily walk + extra walk, no duplicates)' : '(UNEXPECTED)')
 
 for (const [w, h] of [[375, 812], [390, 844], [768, 1024]]) {
   await p.setViewportSize({ width: w, height: h })

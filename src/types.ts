@@ -14,6 +14,7 @@ export interface UserProfile {
   fitnessLevel: FitnessLevel
   equipment: 'bodyweight'
   avatar?: string // small data: URL, chosen in Profile
+  dailyWalk?: { enabled: boolean; minutes: number } // planned every day; unset = default (on, 20 min)
   onboardingCompleted: boolean
   startDate: ISODate // first day streaks are counted from
   createdAt: number

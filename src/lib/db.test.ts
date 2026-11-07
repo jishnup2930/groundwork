@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import Dexie from 'dexie'
-import { completeOnboarding, db, deleteSession, findWorkoutLog, GroundworkDB, logActivity, logWorkout, putWeight, saveCustomWorkout, deleteCustomWorkout, setSchedule, ticksFor, toggleExercise } from './db'
+import { completeOnboarding, dailyWalkId, db, deleteSession, findWorkoutLog, setDailyWalkDistance, toggleDailyWalk, GroundworkDB, logActivity, logWorkout, putWeight, saveCustomWorkout, deleteCustomWorkout, setSchedule, ticksFor, toggleExercise } from './db'
 import { getPrefs } from './prefs'
 import { currentStreak } from './streak'
 import { exportData, importData, parseBackup } from './backup'
@@ -148,5 +148,26 @@ describe('review fixes', () => {
     expect(getPrefs().theme).toBe('light')
     const ok = parseBackup(JSON.stringify({ ...b, profile: { ...b.profile!, avatar: 'data:image/webp;base64,AAAA' } }))
     expect(ok.profile?.avatar).toBe('data:image/webp;base64,AAAA')
+  })
+})
+
+describe('daily walk', () => {
+  it('ticks on, ticks off, never duplicates, and counts as an active day', async () => {
+    await toggleDailyWalk(today(), 20)
+    const p = (await db.profile.get('me'))!
+    const hist = async () => ({ sessions: await db.sessions.toArray(), schedules: await db.schedules.toArray(), startDate: p.startDate, today: today() })
+    expect(await db.sessions.get(dailyWalkId(today()))).toMatchObject({ category: 'activity', duration: 1200, workoutName: 'Walk' })
+    expect(currentStreak(await hist())).toBe(1)
+    await Promise.all([toggleDailyWalk(today(), 20), toggleDailyWalk(today(), 20)]) // off then on again
+    expect(await db.sessions.count()).toBe(1)
+    await toggleDailyWalk(today(), 20)
+    expect(await db.sessions.count()).toBe(0)
+  })
+  it('records an optional distance, and tapping it again clears it', async () => {
+    await toggleDailyWalk(today(), 30)
+    await setDailyWalkDistance(today(), 3)
+    expect((await db.sessions.get(dailyWalkId(today())))?.distanceKm).toBe(3)
+    await setDailyWalkDistance(today(), 3)
+    expect((await db.sessions.get(dailyWalkId(today())))?.distanceKm).toBeUndefined()
   })
 })
