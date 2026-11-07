@@ -42,6 +42,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   mobility: 'Mobility',
   'cardio-core': 'Cardio and core',
   custom: 'Custom',
+  activity: 'Activity',
 }
 
 /** Built-in workouts are written for beginners; step them up for more experienced people. */

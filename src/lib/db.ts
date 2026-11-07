@@ -1,9 +1,9 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type {
-  ActiveSession, ISODate, ScheduleVersion, UserProfile, WeekPlan, WeightEntry, Workout, WorkoutSession,
+  ISODate, ScheduleVersion, UserProfile, WeekPlan, WeightEntry, Workout, WorkoutSession,
 } from '../types'
 import { BUILT_IN, scaleForLevel } from '../data/workouts'
-import { today } from './dates'
+import { toISO, today } from './dates'
 
 export class GroundworkDB extends Dexie {
   profile!: EntityTable<UserProfile, 'id'>
@@ -11,7 +11,6 @@ export class GroundworkDB extends Dexie {
   weights!: EntityTable<WeightEntry, 'date'>
   customWorkouts!: EntityTable<Workout, 'id'>
   schedules!: EntityTable<ScheduleVersion, 'effectiveFrom'>
-  active!: EntityTable<ActiveSession, 'id'>
 
   constructor(name = 'groundwork') {
     super(name)
@@ -24,13 +23,32 @@ export class GroundworkDB extends Dexie {
       schedules: 'effectiveFrom',
       active: 'id',
     })
+    // v2: logging replaced the live timer, so the in-progress workout table goes. History is untouched;
+    // a workout that was part-way through is saved to history first rather than silently dropped.
+    this.version(2).stores({ active: null }).upgrade(async (tx) => {
+      const a = await tx.table('active').get('current')
+      const states: unknown[] = Array.isArray(a?.states) ? a.states : []
+      const done = states.filter((x) => x === 'done').length
+      if (!a?.workout?.exercises || done === 0) return
+      const exercises: { name: string }[] = a.workout.exercises
+      const id = typeof a.sessionId === 'string' ? a.sessionId : `${toISO(new Date(a.startedAt ?? Date.now()))}:${a.workout.id}`
+      if (await tx.table('sessions').get(id)) return
+      const now = Date.now()
+      await tx.table('sessions').add({
+        id, workoutId: a.workout.id, workoutName: a.workout.name, category: a.workout.category,
+        date: toISO(new Date(a.startedAt ?? now)), startedAt: a.startedAt ?? now, completedAt: now,
+        duration: Math.round((a.elapsedMs ?? 0) / 1000), exercisesCompleted: done, totalExercises: exercises.length,
+        completionStatus: done === exercises.length ? 'completed' : 'partial',
+        exercises: exercises.map((e, i) => ({ name: e.name, done: states[i] === 'done' })),
+      })
+    })
   }
 }
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 export const db = new GroundworkDB()
 
-export const ALL_TABLES = ['profile', 'sessions', 'weights', 'customWorkouts', 'schedules', 'active'] as const
+export const ALL_TABLES = ['profile', 'sessions', 'weights', 'customWorkouts', 'schedules'] as const
 
 /** Resolve a workout id to a playable workout, scaled to the user's level. */
 export function resolveWorkout(id: string | null, custom: Workout[], level: UserProfile['fitnessLevel']): Workout | undefined {
@@ -72,58 +90,80 @@ export async function deleteCustomWorkout(id: string) {
   })
 }
 
-export function activeMs(a: Pick<ActiveSession, 'elapsedMs' | 'resumedAt'>, now = Date.now()) {
-  return a.elapsedMs + (a.resumedAt !== null ? now - a.resumedAt : 0)
-}
+/** Id for a new workout log. Older records (from the timer era or old backups) keep their random ids. */
+export const workoutLogId = (date: ISODate, workoutId: string) => `${date}:${workoutId}`
+
+/** The log for a workout on a day, whatever its id. */
+export const findWorkoutLog = (date: ISODate, workoutId: string) =>
+  db.sessions.where('date').equals(date).filter((s) => s.workoutId === workoutId).first()
+
+/** Ticks follow the exercise name, so editing or reordering a custom workout doesn't shift them. */
+export const ticksFor = (w: Workout, log?: WorkoutSession | null) =>
+  w.exercises.map((e) => log?.exercises.find((x) => x.name === e.name)?.done ?? false)
 
 /**
- * Turn the active session into a history record. The record id is fixed at start time,
- * so calling this twice (double tap, two tabs) can only ever write one record.
- * Returns null when nothing was done (nothing worth recording).
+ * Change a day's log for a workout in one read-modify-write transaction, so fast taps and two tabs
+ * can't overwrite each other, and there's only ever one record per workout per day.
+ * Unticking everything removes the record.
  */
-export async function finishSession(now = Date.now()): Promise<WorkoutSession | null> {
-  return db.transaction('rw', [db.active, db.sessions], async () => {
-    const a = await db.active.get('current')
-    if (!a) return null
-    await db.active.delete('current')
-    const done = a.states.filter((s) => s === 'done').length
-    if (done === 0) return null
-    const session: WorkoutSession = {
-      id: a.sessionId,
-      workoutId: a.workout.id,
-      workoutName: a.workout.name,
-      category: a.workout.category,
-      date: today(),
-      startedAt: a.startedAt,
-      completedAt: now,
-      duration: Math.round(activeMs(a, now) / 1000),
-      exercisesCompleted: done,
-      totalExercises: a.workout.exercises.length,
-      completionStatus: done === a.workout.exercises.length ? 'completed' : 'partial',
-      exercises: a.workout.exercises.map((e, i) => ({ name: e.name, done: a.states[i] === 'done' })),
+export function updateWorkoutLog(w: Workout, date: ISODate, change: (done: boolean[], minutes: number) => { done: boolean[]; minutes: number }) {
+  return db.transaction('rw', db.sessions, async () => {
+    const existing = await findWorkoutLog(date, w.id)
+    const { done, minutes } = change(ticksFor(w, existing), existing ? existing.duration / 60 : w.estimatedDuration)
+    const count = done.filter(Boolean).length
+    if (count === 0) {
+      if (existing) await db.sessions.delete(existing.id)
+      return
     }
-    if (!(await db.sessions.get(session.id))) await db.sessions.add(session)
-    return session
+    const now = Date.now()
+    await db.sessions.put({
+      id: existing?.id ?? workoutLogId(date, w.id),
+      workoutId: w.id,
+      workoutName: w.name,
+      category: w.category,
+      date,
+      startedAt: existing?.startedAt ?? now,
+      completedAt: now,
+      duration: Math.round(minutes * 60),
+      exercisesCompleted: count,
+      totalExercises: w.exercises.length,
+      completionStatus: count === w.exercises.length ? 'completed' : 'partial',
+      exercises: w.exercises.map((e, i) => ({ name: e.name, done: done[i] })),
+    })
   })
 }
 
-export async function startSession(workout: Workout) {
+/** Tick or untick one exercise, or 'all' (ticks everything unless everything is already ticked). */
+export const toggleExercise = (w: Workout, date: ISODate, which: number | 'all') =>
+  updateWorkoutLog(w, date, (done, minutes) => {
+    if (which === 'all') {
+      const all = done.every(Boolean)
+      return { done: done.map(() => !all), minutes }
+    }
+    return { done: done.map((d, i) => (i === which ? !d : d)), minutes }
+  })
+
+export const setWorkoutMinutes = (w: Workout, date: ISODate, minutes: number) =>
+  updateWorkoutLog(w, date, (done) => ({ done, minutes }))
+
+/** Set exact ticks (used by tests and restores). */
+export const logWorkout = (w: Workout, date: ISODate, done: boolean[], minutes: number) =>
+  updateWorkoutLog(w, date, () => ({ done, minutes }))
+
+/** Log an activity such as a 10 km walk. Several a day are fine, so each gets its own record. */
+export async function logActivity(a: { id: string; label: string }, date: ISODate, minutes: number, distanceKm?: number) {
   const now = Date.now()
-  const a: ActiveSession = {
-    id: 'current',
-    sessionId: crypto.randomUUID(),
-    workout,
-    index: 0,
-    setsDone: workout.exercises.map(() => 0),
-    states: workout.exercises.map(() => 'pending'),
-    startedAt: now,
-    elapsedMs: 0,
-    resumedAt: now,
-    lastSeenAt: now,
-    restEndsAt: null,
-  }
-  await db.active.put(a)
+  const id = `${date}:activity:${a.id}:${crypto.randomUUID()}`
+  await db.sessions.add({
+    id, workoutId: `activity:${a.id}`, workoutName: a.label, category: 'activity', date,
+    startedAt: now, completedAt: now, duration: Math.round(minutes * 60),
+    exercisesCompleted: 1, totalExercises: 1, completionStatus: 'completed', exercises: [],
+    ...(distanceKm ? { distanceKm } : {}),
+  })
+  return id
 }
+
+export const deleteSession = (id: string) => db.sessions.delete(id)
 
 export async function resetAll() {
   await db.transaction('rw', ALL_TABLES.map((t) => db.table(t)), async () => {

@@ -2,8 +2,10 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Check } from 'lucide-react'
 import { Figure } from '../components/Figure'
+import { Scene } from '../components/Scene'
+import { Leaves } from '../components/Leaves'
 import { Wordmark } from '../components/Layout'
-import { attempt } from '../components/ui'
+import { attempt, radioKeys, rovingTab } from '../components/ui'
 import { completeOnboarding } from '../lib/db'
 import { DEFAULT_WEEK } from '../data/workouts'
 import type { FitnessGoal, FitnessLevel } from '../types'
@@ -24,22 +26,16 @@ export const LEVELS: { value: FitnessLevel; label: string; detail: string }[] = 
 
 export function Landscape({ className = '' }: { className?: string }) {
   return (
-    <div className={`relative overflow-hidden rounded-[2rem] bg-[#e7dcc6] dark:bg-forest-deep ${className}`}>
-      <svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 size-full" aria-hidden>
-        <circle cx="270" cy="105" r="42" fill="var(--color-clay)" opacity="0.9" />
-        <path d="M0 190 C80 150 150 165 220 185 S340 160 400 170 V300 H0Z" fill="var(--color-sage)" />
-        <path d="M0 225 C90 195 170 205 250 225 S360 215 400 205 V300 H0Z" fill="var(--color-moss)" />
-        <path d="M0 262 C100 240 210 245 300 262 S380 262 400 255 V300 H0Z" fill="var(--color-forest)" />
-      </svg>
-      <Figure move="sideStretch" animate tone="paper" className="absolute bottom-[4%] left-[6%] w-[62%]" />
+    <div className={`relative overflow-hidden rounded-[2.25rem] shadow-soft ${className}`}>
+      <Scene slot="welcome" className="absolute inset-0" figureClass="left-1/2 -translate-x-1/2 w-auto bottom-[8%] h-[72%]" />
     </div>
   )
 }
 
-function Choice({ checked, onSelect, label, detail }: { checked: boolean; onSelect: () => void; label: string; detail: string }) {
+function Choice({ checked, onSelect, label, detail, tabIndex }: { checked: boolean; onSelect: () => void; label: string; detail: string; tabIndex?: number }) {
   return (
-    <button type="button" role="radio" aria-checked={checked} onClick={onSelect}
-      className={`flex w-full items-start gap-4 rounded-2xl border px-5 py-4 text-left transition-colors ${checked ? 'border-forest bg-linen' : 'border-rule hover:bg-linen/60'}`}>
+    <button type="button" role="radio" aria-checked={checked} tabIndex={tabIndex} onClick={onSelect}
+      className={`flex w-full items-start gap-4 rounded-3xl border-2 bg-linen px-5 py-4 text-left shadow-soft transition-colors ${checked ? 'border-forest' : 'border-transparent hover:border-sage'}`}>
       <span className={`mt-1 grid size-5 shrink-0 place-items-center rounded-full border-2 ${checked ? 'border-forest bg-forest text-on-forest' : 'border-rule'}`}>
         {checked && <Check size={12} strokeWidth={3.5} />}
       </span>
@@ -129,7 +125,7 @@ export function Onboarding() {
   if (step === 5)
     return (
       <div className="mx-auto grid min-h-dvh max-w-xl content-center px-5 py-10 text-center">
-        <Figure move="armCircles" animate className="rise mx-auto w-56" />
+        <div className="rise relative mx-auto w-64 rounded-[2rem] bg-gradient-to-br from-mint to-sand"><Leaves set="sprig" className="absolute -bottom-2 -left-3 w-24" /><Figure move="armCircles" animate className="relative w-full" /></div>
         <h1 className="display rise mt-6 text-5xl sm:text-6xl" style={{ animationDelay: '100ms' }}>Welcome, {first}!</h1>
         <p className="rise mt-5 text-lg text-ink-soft" style={{ animationDelay: '200ms' }}>Your journey starts today. Let’s make every day count.</p>
         <div className="rise mt-10" style={{ animationDelay: '300ms' }}>
@@ -162,16 +158,16 @@ export function Onboarding() {
     2: {
       title: 'What would you like to work towards?',
       body: (
-        <div role="radiogroup" aria-label="Fitness goal" className="grid gap-3">
-          {GOALS.map((g) => <Choice key={g.value} checked={goal === g.value} onSelect={() => setGoal(g.value)} label={g.label} detail={g.detail} />)}
+        <div role="radiogroup" aria-label="Fitness goal" onKeyDown={radioKeys} className="grid gap-3">
+          {GOALS.map((g, i) => <Choice key={g.value} tabIndex={rovingTab(goal === g.value, i, true)} checked={goal === g.value} onSelect={() => setGoal(g.value)} label={g.label} detail={g.detail} />)}
         </div>
       ),
     },
     3: {
       title: 'How much exercise do you do now?',
       body: (
-        <div role="radiogroup" aria-label="Fitness experience" className="grid gap-3">
-          {LEVELS.map((l) => <Choice key={l.value} checked={level === l.value} onSelect={() => setLevel(l.value)} label={l.label} detail={l.detail} />)}
+        <div role="radiogroup" aria-label="Fitness experience" onKeyDown={radioKeys} className="grid gap-3">
+          {LEVELS.map((l, i) => <Choice key={l.value} tabIndex={rovingTab(level === l.value, i, true)} checked={level === l.value} onSelect={() => setLevel(l.value)} label={l.label} detail={l.detail} />)}
           <p className="mt-2 text-sm text-ink-soft">Workouts adjust their sets and reps to match.</p>
         </div>
       ),
@@ -195,13 +191,13 @@ export function Onboarding() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 py-6 sm:px-8 sm:py-10">
       <div className="flex items-center justify-between gap-4">
-        <button onClick={() => setStep((s) => s - 1)} className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 font-semibold text-ink-soft hover:text-ink">
-          <ArrowLeft size={18} aria-hidden /> Back
+        <button onClick={() => setStep((s) => s - 1)} className="icon-btn" aria-label="Back">
+          <ArrowLeft size={20} aria-hidden />
         </button>
         <p className="text-sm font-semibold text-ink-soft">Step {step} of 4</p>
       </div>
       <div className="mt-4 grid grid-cols-4 gap-1.5" aria-hidden>
-        {[1, 2, 3, 4].map((i) => <span key={i} className={`h-1 rounded-full ${i <= step ? 'bg-forest' : 'bg-sand'}`} />)}
+        {[1, 2, 3, 4].map((i) => <span key={i} className={`h-1.5 rounded-full transition-colors duration-500 ${i <= step ? 'bg-forest' : 'bg-sand'}`} />)}
       </div>
       <h1 key={step} className="display rise mt-12 mb-8 text-4xl sm:text-5xl">{steps[step].title}</h1>
       <div className="flex-1">{steps[step].body}</div>

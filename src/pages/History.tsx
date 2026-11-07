@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Check, ChevronLeft, ChevronRight, Minus } from 'lucide-react'
-import { Dialog, Empty, PageHeader, Segmented } from '../components/ui'
+import { Confirm, Dialog, Empty, PageHeader, Segmented, attempt } from '../components/ui'
+import { deleteSession } from '../lib/db'
 import { useHistory } from '../hooks/useData'
 import { activeDays, dayStatus } from '../lib/streak'
 import { today, daysOfMonth, formatDuration, formatLong, formatMonth, fromISO, monthKey, weekday } from '../lib/dates'
@@ -14,13 +15,15 @@ const shiftMonth = (key: string, d: number) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
-function SessionDetails({ s }: { s: WorkoutSession }) {
+function SessionDetails({ s, onRemove }: { s: WorkoutSession; onRemove: () => void }) {
   return (
     <div>
-      <p className="text-ink-soft">{formatLong(s.date)}, started {new Date(s.startedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
+      <p className="text-ink-soft">{formatLong(s.date)}, logged {new Date(s.completedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
       <dl className="num mt-5 grid grid-cols-3 gap-4 border-y border-rule py-4">
         <div><dt className="text-sm text-ink-soft">Time</dt><dd className="font-bold">{formatDuration(s.duration)}</dd></div>
-        <div><dt className="text-sm text-ink-soft">Exercises</dt><dd className="font-bold">{s.exercisesCompleted} of {s.totalExercises}</dd></div>
+        {s.category === 'activity'
+          ? <div><dt className="text-sm text-ink-soft">Distance</dt><dd className="font-bold">{s.distanceKm ? `${s.distanceKm} km` : 'Not logged'}</dd></div>
+          : <div><dt className="text-sm text-ink-soft">Exercises</dt><dd className="font-bold">{s.exercisesCompleted} of {s.totalExercises}</dd></div>}
         <div><dt className="text-sm text-ink-soft">Status</dt><dd className="font-bold">{s.completionStatus === 'completed' ? 'Completed' : 'Partly done'}</dd></div>
       </dl>
       <ul className="mt-4 space-y-2">
@@ -31,6 +34,7 @@ function SessionDetails({ s }: { s: WorkoutSession }) {
           </li>
         ))}
       </ul>
+      <button className="mt-5 text-sm font-semibold text-clay underline decoration-clay/40 underline-offset-4" onClick={onRemove}>Remove this entry</button>
     </div>
   )
 }
@@ -42,6 +46,7 @@ export function History() {
   const [type, setType] = useState<Category | 'all'>('all')
   const [openDay, setOpenDay] = useState<string | null>(null)
   const [openSession, setOpenSession] = useState<WorkoutSession | null>(null)
+  const [removing, setRemoving] = useState<WorkoutSession | null>(null)
 
   const filtered = useMemo(
     () => (h?.sessions ?? []).filter((s) => monthKey(s.date) === month && (type === 'all' || s.category === type)).sort((a, b) => b.completedAt - a.completedAt),
@@ -65,14 +70,14 @@ export function History() {
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 rounded-full bg-linen p-1 shadow-soft">
               <button className="rounded-full p-3 hover:bg-sand disabled:opacity-30" disabled={month <= firstMonth} onClick={() => setMonth(shiftMonth(month, -1))} aria-label="Previous month"><ChevronLeft size={20} /></button>
-              <h2 className="display min-w-44 text-center text-2xl" aria-live="polite">{formatMonth(month)}</h2>
+              <h2 className="min-w-40 text-center text-lg font-semibold" aria-live="polite">{formatMonth(month)}</h2>
               <button className="rounded-full p-3 hover:bg-sand disabled:opacity-30" disabled={month >= monthKey(h.today)} onClick={() => setMonth(shiftMonth(month, 1))} aria-label="Next month"><ChevronRight size={20} /></button>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <label className="sr-only" htmlFor="type">Workout type</label>
-              <select id="type" className="field min-h-11 w-auto" value={type} onChange={(e) => setType(e.target.value as Category | 'all')}>
+              <select id="type" className="field min-h-11 w-auto rounded-2xl border-0 shadow-soft" value={type} onChange={(e) => setType(e.target.value as Category | 'all')}>
                 <option value="all">All types</option>
                 {Object.entries(CATEGORY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
@@ -81,7 +86,7 @@ export function History() {
           </div>
 
           {view === 'calendar' ? (
-            <div className="mt-8">
+            <div className="card mt-6 p-4 sm:p-6">
               <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-ink-soft sm:text-sm" aria-hidden>
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <span key={d} className="pb-2">{d}</span>)}
               </div>
@@ -94,8 +99,8 @@ export function History() {
                   return (
                     <button key={d} onClick={() => count && setOpenDay(d)} aria-label={label} aria-disabled={!count}
                       className={`relative flex aspect-square flex-col items-center justify-center rounded-2xl text-sm transition-colors sm:text-base ${
-                        count ? 'bg-forest font-bold text-on-forest hover:bg-forest-deep'
-                        : d === h.today ? 'border-2 border-clay'
+                        count ? 'bg-forest font-bold text-on-forest shadow-soft hover:bg-forest-deep'
+                        : d === h.today ? 'bg-apricot/25 font-semibold text-ink ring-2 ring-apricot'
                         : status === 'missed' ? 'border border-dashed border-rule text-ink-soft'
                         : 'text-ink-soft'} ${count ? '' : 'cursor-default'}`}>
                       <span className="num">{fromISO(d).getDate()}</span>
@@ -108,19 +113,19 @@ export function History() {
               <p className="mt-5 text-sm text-ink-soft">Filled days have a workout; tap one to see it. Dashes are rest days and dashed outlines are planned days without a workout.</p>
             </div>
           ) : filtered.length ? (
-            <ul className="mt-6 border-t border-rule">
+            <ul className="card mt-6 divide-y divide-rule overflow-hidden">
               {filtered.map((s) => (
                 <li key={s.id}>
-                  <button onClick={() => setOpenSession(s)} className="grid w-full grid-cols-[4rem_1fr] items-center gap-4 border-b border-rule py-4 text-left hover:bg-sand/30 sm:grid-cols-[5rem_1fr_auto]">
+                  <button onClick={() => setOpenSession(s)} className="grid w-full grid-cols-[4rem_1fr] items-center gap-4 px-4 py-4 text-left hover:bg-sand/30 sm:grid-cols-[5rem_1fr_auto] sm:px-6">
                     <span className="text-center">
-                      <span className="num block font-display text-3xl leading-none">{fromISO(s.date).getDate()}</span>
+                      <span className="num mx-auto grid size-14 place-items-center rounded-2xl bg-mint text-2xl font-semibold leading-none text-forest">{fromISO(s.date).getDate()}</span>
                       <span className="text-xs text-ink-soft">{fromISO(s.date).toLocaleDateString('en-GB', { weekday: 'short' })}</span>
                     </span>
                     <span>
                       <span className="block font-semibold">{s.workoutName}</span>
-                      <span className="num block text-sm text-ink-soft">{CATEGORY_LABEL[s.category]}, {formatDuration(s.duration)}, {s.exercisesCompleted} of {s.totalExercises} exercises</span>
+                      <span className="num block text-sm text-ink-soft">{CATEGORY_LABEL[s.category]}, {formatDuration(s.duration)}{s.category === 'activity' ? (s.distanceKm ? `, ${s.distanceKm} km` : '') : `, ${s.exercisesCompleted} of ${s.totalExercises} exercises`}</span>
                     </span>
-                    <span className={`col-start-2 text-sm font-semibold sm:col-start-auto ${s.completionStatus === 'completed' ? 'text-moss' : 'text-ink-soft'}`}>
+                    <span className={`col-start-2 text-sm font-semibold sm:col-start-auto ${s.completionStatus === 'completed' ? 'chip w-fit bg-mint text-forest' : 'chip w-fit bg-sand text-ink-soft'}`}>
                       {s.completionStatus === 'completed' ? 'Completed' : 'Partly done'}
                     </span>
                   </button>
@@ -137,13 +142,16 @@ export function History() {
         {daySessions.map((s, i) => (
           <div key={s.id} className={i ? 'mt-8 border-t border-rule pt-6' : ''}>
             {daySessions.length > 1 && <h3 className="mb-2 font-semibold">{s.workoutName}</h3>}
-            <SessionDetails s={s} />
+            <SessionDetails s={s} onRemove={() => { setOpenDay(null); setRemoving(s) }} />
           </div>
         ))}
       </Dialog>
       <Dialog open={!!openSession} onClose={() => setOpenSession(null)} title={openSession?.workoutName ?? ''}>
-        {openSession && <SessionDetails s={openSession} />}
+        {openSession && <SessionDetails s={openSession} onRemove={() => { setOpenSession(null); setRemoving(openSession) }} />}
       </Dialog>
+      <Confirm open={!!removing} onClose={() => setRemoving(null)} danger action="Remove entry" title="Remove this entry?"
+        body={removing && `${removing.workoutName} on ${formatLong(removing.date)} will be removed from your history. Your streak is recalculated.`}
+        onConfirm={() => removing && attempt(() => deleteSession(removing.id), 'Entry removed')} />
     </div>
   )
 }

@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react'
 
 export const useProfile = () => useLiveQuery(() => db.profile.get('me').then((p) => p ?? null))
 export const useCustomWorkouts = () => useLiveQuery(() => db.customWorkouts.orderBy('updatedAt').reverse().toArray())
-export const useActive = () => useLiveQuery(() => db.active.get('current').then((a) => a ?? null))
 export const useWeights = () => useLiveQuery(() => db.weights.orderBy('date').toArray())
 export const useSessions = () => useLiveQuery(() => db.sessions.orderBy('date').toArray())
 export const useSchedules = () => useLiveQuery(() => db.schedules.orderBy('effectiveFrom').toArray())

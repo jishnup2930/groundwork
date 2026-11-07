@@ -1,7 +1,10 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Download, Upload, Pencil } from 'lucide-react'
-import { Confirm, Dialog, PageHeader, Segmented, attempt, toast } from '../components/ui'
+import { Camera, Download, Upload, Pencil } from 'lucide-react'
+import { Avatar } from '../components/Avatar'
+import { Leaves } from '../components/Leaves'
+import { toAvatar } from '../lib/image'
+import { Confirm, Dialog, Segmented, attempt, toast } from '../components/ui'
 import { useProfile, useWeights } from '../hooks/useData'
 import { clearPrefs, setPrefs, usePrefs } from '../lib/prefs'
 import { putWeight, resetAll, updateProfile } from '../lib/db'
@@ -78,6 +81,7 @@ export function Profile() {
   const prefs = usePrefs()
   const nav = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
+  const avatarRef = useRef<HTMLInputElement>(null)
   const [editing, setEditing] = useState(false)
   const [pending, setPending] = useState<Backup | null>(null)
   const [resetOpen, setResetOpen] = useState(false)
@@ -114,21 +118,42 @@ export function Profile() {
 
   return (
     <div>
-      <PageHeader title="Profile" intro="Your details, your settings, and your data.">
-        <button className="btn-ghost" onClick={() => setEditing(true)}><Pencil size={16} aria-hidden /> Edit profile</button>
-      </PageHeader>
+      <section className="relative overflow-hidden rounded-[2.25rem] bg-gradient-to-br from-mint via-linen to-sand p-6 shadow-soft sm:p-8">
+        <Leaves set="edge" className="absolute -right-8 -top-2 w-44 opacity-80" />
+        <Leaves set="sprig" className="absolute -bottom-3 left-1/2 w-28 opacity-60" />
+        <div className="relative flex flex-wrap items-center gap-5">
+          <Avatar name={profile.name} src={profile.avatar} className="size-24 text-3xl" />
+          <div className="min-w-0 flex-1">
+            <h1 className="display text-4xl sm:text-5xl">{profile.name}</h1>
+            <p className="mt-1 text-ink-soft">On the journey since {formatShort(profile.startDate)}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="chip min-h-9 bg-linen px-4 text-ink shadow-soft" onClick={() => avatarRef.current?.click()}><Camera size={14} aria-hidden /> {profile.avatar ? 'Change photo' : 'Add a photo'}</button>
+              {profile.avatar && <button className="chip min-h-9 bg-linen/60 px-4 text-ink-soft" onClick={() => attempt(() => updateProfile({ avatar: undefined }), 'Photo removed')}>Remove photo</button>}
+              <button className="chip min-h-9 bg-night px-4 text-on-forest" onClick={() => setEditing(true)}><Pencil size={14} aria-hidden /> Edit profile</button>
+            </div>
+            <input ref={avatarRef} type="file" accept="image/*" className="hidden" aria-label="Choose a profile photo" onChange={async (e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (!f) return
+              try { const url = await toAvatar(f); await attempt(() => updateProfile({ avatar: url }), 'Photo updated') }
+              catch (err) { toast((err as Error).message, 'error') }
+            }} />
+          </div>
+        </div>
+        <p className="relative mt-4 text-sm text-ink-soft">Your photo stays on this device, like everything else.</p>
+      </section>
 
-      <dl className="grid gap-x-12 sm:grid-cols-2">
-        {rows.map(([k, v]) => (
-          <div key={k} className="flex justify-between gap-4 border-b border-rule py-3">
+      <dl className="card mt-5 grid gap-x-10 px-6 py-2 sm:grid-cols-2">
+        {rows.filter(([k]) => k !== 'Name' && k !== 'Started').map(([k, v]) => (
+          <div key={k} className="flex justify-between gap-4 border-b border-rule py-3 last:border-0 sm:[&:nth-last-child(2)]:border-0">
             <dt className="text-ink-soft">{k}</dt><dd className="text-right font-semibold">{v}</dd>
           </div>
         ))}
       </dl>
 
-      <section aria-labelledby="settings-title" className="mt-16">
-        <h2 id="settings-title" className="display text-3xl">Settings</h2>
-        <div className="mt-6 divide-y divide-rule border-y border-rule">
+      <section aria-labelledby="settings-title" className="card mt-5 p-6">
+        <h2 id="settings-title" className="text-2xl font-semibold">Settings</h2>
+        <div className="mt-3 divide-y divide-rule">
           {[
             ['Weight', <Segmented key="w" label="Weight unit" value={prefs.weightUnit} onChange={(v) => setPrefs({ weightUnit: v })} options={[{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }]} />],
             ['Height', <Segmented key="h" label="Height unit" value={prefs.heightUnit} onChange={(v) => setPrefs({ heightUnit: v })} options={[{ value: 'cm', label: 'cm' }, { value: 'ftin', label: 'ft and in' }]} />],
@@ -154,8 +179,8 @@ export function Profile() {
         </div>
       </section>
 
-      <section id="data" aria-labelledby="data-title" className="mt-16 scroll-mt-8">
-        <h2 id="data-title" className="display text-3xl">Your data</h2>
+      <section id="data" aria-labelledby="data-title" className="card mt-5 scroll-mt-8 p-6">
+        <h2 id="data-title" className="text-2xl font-semibold">Your data</h2>
         <p className="mt-3 max-w-xl text-ink-soft">
           Everything is stored in this browser on this device. Nothing is sent anywhere and nothing syncs between devices. Clearing your browser data or uninstalling the app can erase it, so export a backup now and then.
         </p>

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { motion } from 'motion/react'
 import { X } from 'lucide-react'
 import { setbackLine } from '../data/messages'
+import { Leaves } from './Leaves'
 
 /** Native <dialog>: focus trapping, Esc to close and the backdrop come for free. */
 export function Dialog({ open, onClose, title, children, wide = false }: {
@@ -19,7 +21,7 @@ export function Dialog({ open, onClose, title, children, wide = false }: {
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-label={title}
-      className={`m-auto w-[calc(100%-2rem)] ${wide ? 'max-w-2xl' : 'max-w-md'} rounded-3xl bg-linen p-0 text-ink shadow-2xl`}
+      className={`m-auto w-[calc(100%-2rem)] ${wide ? 'max-w-2xl' : 'max-w-md'} rounded-[2rem] bg-linen p-0 text-ink shadow-float`}
     >
       {open && (
         <div className="p-6 sm:p-8">
@@ -68,10 +70,10 @@ export function Toaster() {
     return () => void subs.delete(on)
   }, [])
   return (
-    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-8">
+    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-28 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-8">
       {items.map((t) => (
         <div key={t.id} role={t.tone === 'error' ? 'alert' : 'status'}
-          className={`rise max-w-md px-5 py-3 text-sm font-semibold shadow-lg ${t.tone === 'error' ? 'rounded-2xl bg-clay text-linen' : 'rounded-full bg-forest text-on-forest'}`}>
+          className={`rise max-w-md px-5 py-3 text-sm font-semibold shadow-lg ${t.tone === 'error' ? 'rounded-2xl bg-clay text-on-forest' : 'rounded-full bg-forest text-on-forest'}`}>
           {t.text}
           {t.note && <span className="mt-1 block font-display font-normal opacity-90">{t.note}</span>}
         </div>
@@ -103,7 +105,7 @@ export function describeError(e: unknown): string {
 
 export function PageHeader({ title, intro, children }: { title: string; intro?: ReactNode; children?: ReactNode }) {
   return (
-    <header className="mb-10 flex flex-wrap items-end justify-between gap-4 border-b border-rule pb-6">
+    <header className="relative mb-8 flex flex-wrap items-end justify-between gap-4 pt-2">
       <div className="max-w-xl">
         <h1 className="display text-4xl sm:text-5xl">{title}</h1>
         {intro && <p className="mt-3 text-ink-soft">{intro}</p>}
@@ -115,23 +117,46 @@ export function PageHeader({ title, intro, children }: { title: string; intro?: 
 
 export function Empty({ title, body, children }: { title: string; body?: string; children?: ReactNode }) {
   return (
-    <div className="rounded-3xl border border-dashed border-rule px-6 py-12 text-center">
-      <p className="display mx-auto max-w-sm text-2xl">{title}</p>
-      {body && <p className="mx-auto mt-2 max-w-sm text-ink-soft">{body}</p>}
-      {children && <div className="mt-6">{children}</div>}
+    <div className="card relative overflow-hidden px-6 py-12 text-center">
+      <Leaves set="sprig" className="absolute -bottom-3 -left-3 w-32 opacity-70" />
+      <Leaves set="edge" className="absolute -right-8 -top-3 w-32 opacity-50" />
+      <p className="display relative mx-auto max-w-sm text-2xl">{title}</p>
+      {body && <p className="relative mx-auto mt-2 max-w-sm text-ink-soft">{body}</p>}
+      {children && <div className="relative mt-6">{children}</div>}
     </div>
   )
 }
 
+/**
+ * Keyboard support for a role="radiogroup": arrow keys (and Home/End) move between options and select them.
+ * Pair with rovingTab() so Tab enters the group once instead of stopping on every option.
+ */
+export function radioKeys(e: React.KeyboardEvent<HTMLElement>) {
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+  if (step === undefined && e.key !== 'Home' && e.key !== 'End') return
+  const radios = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]:not([disabled])')]
+  const at = radios.indexOf(document.activeElement as HTMLElement)
+  if (at < 0 || !radios.length) return
+  e.preventDefault()
+  const next = e.key === 'Home' ? 0 : e.key === 'End' ? radios.length - 1 : (at + step! + radios.length) % radios.length
+  radios[next].focus()
+  radios[next].click()
+}
+
+/** tabIndex for option i: the selected one is tabbable, or the first if nothing is selected yet. */
+export const rovingTab = (selected: boolean, i: number, anySelected: boolean) => (selected || (!anySelected && i === 0) ? 0 : -1)
+
 export function Segmented<T extends string>({ value, onChange, options, label }: {
   value: T; onChange: (v: T) => void; options: { value: T; label: string }[]; label: string
 }) {
+  const id = useId()
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-full border border-rule bg-linen p-1">
-      {options.map((o) => (
-        <button key={o.value} role="radio" aria-checked={value === o.value} onClick={() => onChange(o.value)}
-          className={`min-h-10 rounded-full px-4 text-sm font-semibold transition-colors ${value === o.value ? 'bg-forest text-on-forest' : 'text-ink-soft hover:text-ink'}`}>
-          {o.label}
+    <div role="radiogroup" aria-label={label} onKeyDown={radioKeys} className="inline-flex rounded-2xl bg-linen p-1 shadow-soft">
+      {options.map((o, i) => (
+        <button key={o.value} role="radio" aria-checked={value === o.value} tabIndex={rovingTab(value === o.value, i, options.some((x) => x.value === value))} onClick={() => onChange(o.value)}
+          className={`relative min-h-10 rounded-xl px-4 text-sm font-semibold transition-colors ${value === o.value ? 'text-on-forest' : 'text-ink-soft hover:text-ink'}`}>
+          {value === o.value && <motion.span layoutId={id} className="absolute inset-0 rounded-xl bg-forest" transition={{ type: 'spring', stiffness: 420, damping: 34 }} aria-hidden />}
+          <span className="relative">{o.label}</span>
         </button>
       ))}
     </div>

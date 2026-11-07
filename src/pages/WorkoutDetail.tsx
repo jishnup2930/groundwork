@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, Play, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Pencil, Trash2 } from 'lucide-react'
 import { Figure } from '../components/Figure'
-import { Confirm, attempt } from '../components/ui'
+import { Scene } from '../components/Scene'
+import { SCENE_FOR_CATEGORY } from '../data/scenes'
+import { Confirm, Segmented, attempt } from '../components/ui'
 import { useCustomWorkouts, useProfile } from '../hooks/useData'
-import { useStart } from '../hooks/useStart'
+import { LogWorkout } from '../components/LogWorkout'
+import { today, addDays } from '../lib/dates'
 import { deleteCustomWorkout, resolveWorkout } from '../lib/db'
 import { CATEGORY_LABEL } from '../data/workouts'
 import type { Exercise } from '../types'
@@ -16,7 +19,7 @@ export function WorkoutDetail() {
   const nav = useNavigate()
   const profile = useProfile()
   const custom = useCustomWorkouts()
-  const start = useStart()
+  const [when, setWhen] = useState<'today' | 'yesterday'>('today')
   const [confirmDelete, setConfirmDelete] = useState(false)
   if (!profile || !custom) return null
   const w = resolveWorkout(id!, custom, profile.fitnessLevel)
@@ -30,30 +33,46 @@ export function WorkoutDetail() {
 
   return (
     <div>
-      <Link to="/workouts" className="-ml-1 inline-flex min-h-11 items-center gap-1.5 font-semibold text-ink-soft hover:text-ink"><ArrowLeft size={18} aria-hidden /> Workouts</Link>
-      <header className="mt-4 grid gap-6 border-b border-rule pb-8 md:grid-cols-[1.5fr_1fr] md:items-end">
-        <div>
-          <p className="font-semibold text-ink-soft">{CATEGORY_LABEL[w.category]}</p>
-          <h1 className="display mt-1 text-5xl sm:text-6xl">{w.name}</h1>
-          {w.description && <p className="mt-4 max-w-lg text-lg text-ink-soft">{w.description}</p>}
-          <p className="num mt-4 font-semibold">About {w.estimatedDuration} minutes, {w.exercises.length} exercises, {w.difficulty} level, no equipment</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <button className="btn-primary px-7" onClick={() => start(w)}><Play size={18} fill="currentColor" aria-hidden /> Start workout</button>
+      <header className="relative isolate flex min-h-[26rem] flex-col overflow-hidden rounded-[2.25rem] p-5 shadow-soft sm:min-h-[30rem] sm:p-7">
+        <Scene slot={SCENE_FOR_CATEGORY[w.category]} className="absolute inset-0 -z-10" figureClass="left-1/2 -translate-x-1/2 w-auto top-[6%] h-[38%] md:left-auto md:right-[4%] md:translate-x-0 md:top-[12%] md:h-[72%]" />
+        <span className="absolute inset-x-0 bottom-0 -z-10 h-3/5 bg-gradient-to-t from-linen via-linen/85 to-transparent md:h-full md:w-3/5 md:bg-gradient-to-r" aria-hidden />
+        <Link to="/workouts" className="icon-btn" aria-label="Back to workouts"><ArrowLeft size={20} /></Link>
+        <div className="mt-auto max-w-xl">
+          <span className="chip bg-mint text-forest">{CATEGORY_LABEL[w.category]}</span>
+          <h1 className="display mt-3 text-5xl sm:text-6xl">{w.name}</h1>
+          {w.description && <p className="mt-3 max-w-lg text-lg text-ink-soft">{w.description}</p>}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[`${w.estimatedDuration} min`, `${w.exercises.length} exercises`, w.difficulty[0].toUpperCase() + w.difficulty.slice(1), 'No equipment'].map((t) => <span key={t} className="chip bg-linen text-ink shadow-soft">{t}</span>)}
+          </div>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a href="#log" className="btn bg-night px-7 text-on-forest hover:bg-ink"><Check size={18} aria-hidden /> Log this workout</a>
             {w.isCustom && <>
               <Link to={`/workouts/${w.id}/edit`} className="btn-ghost"><Pencil size={16} aria-hidden /> Edit</Link>
               <button className="btn-ghost" onClick={() => setConfirmDelete(true)}><Trash2 size={16} aria-hidden /> Delete</button>
             </>}
           </div>
         </div>
-        <Figure move={w.exercises[0]?.pose} className="hidden w-full rounded-[2rem] bg-linen md:block" />
       </header>
 
-      <ol className="mt-4">
+      <section id="log" aria-labelledby="log-title" className="card mt-5 scroll-mt-6 p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="log-title" className="text-xl font-semibold">Did it? Tick it off</h2>
+            <p className="text-sm text-ink-soft">Do the workout at home, then tick what you finished. Each tap saves.</p>
+          </div>
+          <Segmented label="Which day" value={when} onChange={setWhen} options={[{ value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' }]} />
+        </div>
+        <div className="mt-4"><LogWorkout workout={w} date={when === 'today' ? today() : addDays(today(), -1)} /></div>
+      </section>
+
+      <h2 className="mt-8 px-1 text-xl font-semibold">How to do each exercise</h2>
+
+      <ol className="card mt-5 divide-y divide-rule px-5">
         {w.exercises.map((e, i) => (
-          <li key={e.id + i} className="border-b border-rule">
+          <li key={e.id + i}>
             <details className="group">
               <summary className="flex cursor-pointer list-none items-center gap-4 py-4 sm:gap-6">
-                <span className="w-16 shrink-0 rounded-xl bg-linen sm:w-20"><Figure move={e.pose} /></span>
+                <span className="w-16 shrink-0 rounded-2xl bg-gradient-to-br from-mint to-sand sm:w-20"><Figure move={e.pose} /></span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-lg font-semibold">{e.name}</span>
                   <span className="num block text-sm text-ink-soft">{amount(e)}, {e.restDuration}s rest. {e.muscleGroup}</span>

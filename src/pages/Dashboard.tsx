@@ -1,26 +1,36 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarDays, PenLine, Play, Sprout, Dumbbell } from 'lucide-react'
-import { Figure } from '../components/Figure'
-import { Rings } from '../components/Rings'
+import { AnimatePresence, motion } from 'motion/react'
+import { CalendarDays, Check, Flame, PenLine, Plus, Sprout, X, Zap } from 'lucide-react'
+import { Scene } from '../components/Scene'
+import { Avatar } from '../components/Avatar'
 import { WeekStrip } from '../components/WeekStrip'
-import { useActive, useHistory, usePlanned, useProfile, useToday } from '../hooks/useData'
-import { useStart } from '../hooks/useStart'
-import { formatDuration, formatLong } from '../lib/dates'
-import { currentStreak, longestStreak, weekStats } from '../lib/streak'
-import { CATEGORY_LABEL, BUILT_IN, scaleForLevel } from '../data/workouts'
+import { useHistory, usePlanned, useProfile, useToday } from '../hooks/useData'
+import { LogWorkout } from '../components/LogWorkout'
+import { AddActivity } from '../components/AddActivity'
+import { Confirm, Dialog, attempt } from '../components/ui'
+import type { WorkoutSession } from '../types'
+import { deleteSession } from '../lib/db'
+import { formatLong } from '../lib/dates'
+import { currentStreak, weekStats } from '../lib/streak'
+import { CATEGORY_LABEL } from '../data/workouts'
 import { MESSAGES, MILESTONES, fillName, pickMessage } from '../data/messages'
+import { SCENE_FOR_CATEGORY } from '../data/scenes'
 import { getPrefs, setPrefs, usePrefs } from '../lib/prefs'
-import type { Workout } from '../types'
 
-// Picked once per app load, so it changes between visits but not while moving between pages.
+// Picked once per app load, so it changes between visits; then it gently rotates while Home is open.
 let messageIndex: number | undefined
-function useMessage(name: string) {
+function useRotatingMessage(name: string, everyMs = 12000) {
   if (messageIndex === undefined) {
     messageIndex = pickMessage(getPrefs().lastMessage)
     setPrefs({ lastMessage: messageIndex })
   }
-  return fillName(MESSAGES[messageIndex], name)
+  const [i, setI] = useState(messageIndex)
+  useEffect(() => {
+    const id = setInterval(() => setI((x) => (messageIndex = (x + 1) % MESSAGES.length)), everyMs)
+    return () => clearInterval(id)
+  }, [everyMs])
+  return { key: i, text: fillName(MESSAGES[i], name) }
 }
 
 function greeting(h = new Date().getHours()) {
@@ -30,160 +40,182 @@ function greeting(h = new Date().getHours()) {
   return 'Good evening'
 }
 
-function Facts({ w }: { w: Workout }) {
-  return (
-    <dl className="mt-6 flex flex-wrap gap-x-7 gap-y-3">
-      {[
-        ['Time', `${w.estimatedDuration} min`],
-        ['Exercises', String(w.exercises.length)],
-        ['Level', w.difficulty[0].toUpperCase() + w.difficulty.slice(1)],
-        ['Equipment', 'None'],
-      ].map(([k, v]) => (
-        <div key={k}>
-          <dt className="text-sm opacity-70">{k}</dt>
-          <dd className="num text-xl font-bold">{v}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
+const rise = (delay = 0) => ({
+  initial: { opacity: 0, y: 18 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.6, delay, ease: [0.2, 0.7, 0.2, 1] as const },
+})
 
 export function Dashboard() {
   const profile = useProfile()
   const today = useToday()
   const history = useHistory()
   const planned = usePlanned(today)
-  const active = useActive()
   const prefs = usePrefs()
-  const start = useStart()
+  const [adding, setAdding] = useState(false)
+  const [removing, setRemoving] = useState<WorkoutSession | null>(null)
   const first = profile?.name.split(' ')[0] ?? ''
-  const message = useMessage(profile?.name ?? '')
+  const message = useRotatingMessage(profile?.name ?? '')
 
-  const stats = useMemo(() => history && {
-    week: weekStats(today, history),
-    streak: currentStreak(history),
-    longest: longestStreak(history),
-  }, [history, today])
+  const stats = useMemo(() => history && { week: weekStats(today, history), streak: currentStreak(history) }, [history, today])
+  if (!profile || !history || !planned || !stats) return null
 
-  if (!profile || !history || !planned || !stats || active === undefined) return null
-
-  const todays = history.sessions.filter((s) => s.date === today)
-  const doneToday = todays.filter((s) => s.exercisesCompleted > 0)
   const w = planned.workout
+  const todays = history.sessions.filter((s) => s.date === today && s.exercisesCompleted > 0)
+  const activities = todays.filter((s) => s.category === 'activity')
+  const planDone = w ? todays.find((s) => s.workoutId === w.id)?.completionStatus === 'completed' : false
   const milestone = Object.keys(MILESTONES).map(Number).filter((m) => m <= stats.streak).pop()
   const [rh, rm] = prefs.reminder.time.split(':').map(Number)
   const nowMins = new Date().getHours() * 60 + new Date().getMinutes()
-  const nudge = prefs.reminder.enabled && w && !doneToday.length && !active && nowMins >= rh * 60 + rm
-
-  // Today's progress: the running session if there is one, otherwise what's been saved today.
-  const progress = active
-    ? { done: active.states.filter((s) => s === 'done').length, total: active.workout.exercises.length, secs: 0 }
-    : { done: doneToday.reduce((t, s) => t + s.exercisesCompleted, 0), total: doneToday.reduce((t, s) => t + s.totalExercises, 0) || (w?.exercises.length ?? 0), secs: doneToday.reduce((t, s) => t + s.duration, 0) }
-  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0
+  const nudge = prefs.reminder.enabled && w && !todays.length && nowMins >= rh * 60 + rm
 
   return (
-    <div>
-      <header className="rise">
-        <p className="font-semibold text-ink-soft">{formatLong(today)}</p>
-        <h1 className="display mt-2 text-5xl sm:text-6xl lg:text-7xl">{greeting()}, {first}.</h1>
-        <p className="mt-4 max-w-xl font-display text-xl text-ink-soft sm:text-2xl">{message}</p>
-      </header>
+    <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr] lg:gap-6 [&>*]:min-w-0">
+      {/* Hero: photo, greeting, streak and this week's numbers */}
+      <motion.section {...rise()} aria-labelledby="hello" className="relative isolate flex min-h-[36rem] flex-col overflow-hidden rounded-[2.25rem] shadow-soft lg:sticky lg:top-8 lg:min-h-[46rem]">
+        <Scene slot="hero" className="absolute inset-0 -z-10" figureClass="left-1/2 -translate-x-1/2 w-auto top-[38%] h-[34%] lg:top-[34%] lg:h-[42%]" />
+        <div className="absolute inset-x-0 top-0 -z-10 h-[38%] bg-gradient-to-b from-paper via-paper/70 to-transparent" aria-hidden />
 
-      <section aria-labelledby="today-title" className="rise mt-10 overflow-hidden rounded-[2rem] bg-forest text-on-forest" style={{ animationDelay: '120ms' }}>
-        <div className="grid items-center gap-2 p-7 sm:p-10 md:grid-cols-[1.4fr_1fr]">
-          {doneToday.length > 0 && !active ? (
-            <div>
-              <p className="font-semibold opacity-75">Today</p>
-              <h2 id="today-title" className="display mt-2 text-4xl sm:text-5xl">You showed up today, {first}. That’s what matters.</h2>
-              <p className="mt-4 max-w-md opacity-80">
-                {doneToday.map((s) => s.workoutName).join(' and ')} done. Rest well, drink some water, and enjoy the rest of your day.
-              </p>
-              <Link to="/workouts" className="btn-light mt-8">Do another workout</Link>
+        <div className="flex items-center gap-3 p-5 sm:p-7">
+          <Link to="/profile" aria-label="Your profile"><Avatar name={profile.name} src={profile.avatar} /></Link>
+          <span className="chip bg-linen/85 text-ink-soft backdrop-blur">{formatLong(today)}</span>
+          <Link to="/workouts" className="icon-btn ml-auto" aria-label="Browse workouts"><Zap size={20} className="text-forest" /></Link>
+        </div>
+
+        <div className="px-5 sm:px-7">
+          <h1 id="hello" className="display text-[2.75rem] sm:text-6xl">Hey, {first}!</h1>
+          <div className="mt-3 flex items-start gap-3">
+            <div className="min-h-[3.5rem] flex-1 sm:max-w-sm" aria-live="polite">
+              <AnimatePresence mode="wait">
+                <motion.p key={message.key} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.45 }}
+                  className="text-lg leading-snug text-ink/85 sm:text-xl">
+                  {greeting()}. {message.text}
+                </motion.p>
+              </AnimatePresence>
             </div>
-          ) : w ? (
-            <div>
-              <p className="font-semibold opacity-75">Today’s focus: {CATEGORY_LABEL[w.category]}</p>
-              <h2 id="today-title" className="display mt-2 text-4xl sm:text-5xl">{w.name}</h2>
-              <p className="mt-3 max-w-md opacity-80">{w.description}</p>
-              <Facts w={w} />
-              <div className="mt-8 flex flex-wrap items-center gap-4">
-                <button className="btn-light px-7" onClick={() => start(active ? active.workout : w)}>
-                  <Play size={18} fill="currentColor" aria-hidden /> {active ? 'Resume workout' : 'Start workout'}
-                </button>
-                <Link to={`/workouts/${w.id}`} className="font-semibold underline decoration-2 underline-offset-4 opacity-80 hover:opacity-100">See the exercises</Link>
-              </div>
+            <motion.div {...rise(0.25)} className="flex shrink-0 items-center gap-2 rounded-3xl bg-linen/90 px-4 py-3 shadow-soft backdrop-blur"
+              role="img" aria-label={`${stats.streak} workout day streak`} title={milestone ? MILESTONES[milestone] : 'Your current streak'}>
+              <Flame size={22} className="text-apricot" fill="currentColor" aria-hidden />
+              <span className="num text-2xl font-semibold">{stats.streak}</span>
+            </motion.div>
+          </div>
+        </div>
+
+        <motion.div {...rise(0.35)} className="mx-4 mb-4 mt-auto rounded-[1.75rem] bg-linen/95 p-5 shadow-float backdrop-blur sm:mx-6 sm:mb-6">
+          <div className="flex items-center gap-2">
+            <Zap size={18} className="text-forest" aria-hidden />
+            <h2 className="font-semibold">Active this week</h2>
+            <button onClick={() => setAdding(true)} className="ml-auto grid size-9 place-items-center rounded-full border border-rule hover:bg-sand" aria-label="Add an activity"><Plus size={18} /></button>
+          </div>
+          <dl className="mt-3 grid grid-cols-2 divide-x divide-rule">
+            <div className="pr-4">
+              <dd className="num text-4xl font-semibold tracking-tight">{stats.week.minutes}<span className="ml-0.5 text-lg font-medium text-ink-soft">min</span></dd>
+              <dt className="text-sm text-ink-soft">Time moving</dt>
+            </div>
+            <div className="pl-5">
+              <dd className="num text-4xl font-semibold tracking-tight">{stats.week.workouts}<span className="ml-1 text-lg font-medium text-ink-soft">logged</span></dd>
+              <dt className="text-sm text-ink-soft">Done this week</dt>
+            </div>
+          </dl>
+        </motion.div>
+      </motion.section>
+
+      <div className="flex flex-col gap-5">
+        {/* Today: tick what you did */}
+        <motion.section {...rise(0.1)} aria-labelledby="today-title" className="card p-5">
+          <div className="flex gap-4">
+            <Scene slot={!w ? 'rest' : SCENE_FOR_CATEGORY[w.category]} className="size-20 shrink-0 rounded-2xl sm:size-24" figureClass="left-1/2 -translate-x-1/2 w-auto bottom-[6%] h-[84%]" />
+            <div className="min-w-0 flex-1">
+              {w ? (
+                <>
+                  <span className={`chip ${planDone ? 'bg-forest text-on-forest' : 'bg-mint text-forest'}`}>
+                    {planDone ? <><Check size={13} strokeWidth={3} aria-hidden /> Done today</> : `Today: ${CATEGORY_LABEL[w.category]}`}
+                  </span>
+                  <h2 id="today-title" className="mt-2 text-2xl font-semibold leading-tight">{planDone ? `Nicely done, ${first}.` : w.name}</h2>
+                  <p className="mt-1 text-sm text-ink-soft">{planDone ? `${w.name} is logged. That’s what matters.` : `Do it at home, then tick each one off. About ${w.estimatedDuration} min.`}</p>
+                </>
+              ) : (
+                <>
+                  <span className="chip bg-sand text-ink-soft">Rest day</span>
+                  <h2 id="today-title" className="mt-2 text-2xl font-semibold leading-tight">Recovery is part of the work</h2>
+                  <p className="mt-1 text-sm text-ink-soft">Nothing planned. A walk or some gentle stretching still counts.</p>
+                </>
+              )}
+            </div>
+          </div>
+
+          {w ? (
+            <div className="mt-4">
+              <LogWorkout workout={w} date={today} />
+              <Link to={`/workouts/${w.id}`} className="mt-4 inline-block text-sm font-semibold text-forest underline decoration-sage decoration-2 underline-offset-4">How to do each exercise</Link>
             </div>
           ) : (
-            <div>
-              <p className="font-semibold opacity-75">Today</p>
-              <h2 id="today-title" className="display mt-2 text-4xl sm:text-5xl">Rest day</h2>
-              <p className="mt-3 max-w-md opacity-80">Recovery is part of the work. Your muscles get stronger while you rest.</p>
-              <button className="btn-light mt-8" onClick={() => start(scaleForLevel(BUILT_IN.find((b) => b.id === 'mobility')!, profile.fitnessLevel))}>
-                Fancy moving? Try gentle mobility
-              </button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link to="/workouts/mobility" className="btn-ghost">Gentle mobility</Link>
+              <button className="btn bg-night text-on-forest hover:bg-ink" onClick={() => setAdding(true)}><Plus size={17} aria-hidden /> Add a walk</button>
             </div>
           )}
-          <Figure move={doneToday.length && !active ? 'childsPose' : w?.exercises[0]?.pose ?? 'childsPose'} tone="paper" className="order-first -mb-2 w-44 justify-self-start opacity-95 md:order-none md:w-full md:max-w-xs md:justify-self-end" />
-        </div>
-        {(w || doneToday.length > 0) && (
-          <div className="border-t border-on-forest/15 px-7 py-5 sm:px-10">
-            <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-              <span className="font-semibold">{active ? 'In progress' : doneToday.length ? 'Completed' : 'Not started yet'}</span>
-              <span className="num opacity-80">
-                {progress.done} of {progress.total} exercises{progress.secs ? `, ${formatDuration(progress.secs)}` : ''}, {pct}%
-              </span>
+          {nudge && <p className="mt-4 rounded-2xl bg-apricot/15 px-4 py-3 text-sm text-ink">It’s past {prefs.reminder.time}, your reminder time. There’s still plenty of today left.</p>}
+        </motion.section>
+
+        {/* Anything else */}
+        <motion.section {...rise(0.15)} aria-labelledby="extra-title" className="rounded-[1.75rem] bg-mint p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <h2 id="extra-title" className="text-lg font-semibold">Moved some other way?</h2>
+              <p className="text-sm text-ink-soft">Log a walk, run, cycle, yoga or dance in a few taps.</p>
             </div>
-            <div className="mt-2 h-1.5 rounded-full bg-on-forest/15" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Today’s progress">
-              <div className="h-full rounded-full bg-clay transition-[width] duration-700" style={{ width: `${pct}%` }} />
-            </div>
+            <motion.button whileTap={{ scale: 0.95 }} onClick={() => setAdding(true)} className="btn shrink-0 bg-night px-5 text-on-forest hover:bg-ink">
+              <Plus size={17} aria-hidden /> Add
+            </motion.button>
           </div>
-        )}
-      </section>
+          {activities.length > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-2" aria-label="Logged today">
+              {activities.map((a) => (
+                <li key={a.id} className="chip min-h-9 bg-linen pr-1.5 text-ink">
+                  <Check size={13} strokeWidth={3} className="text-forest" aria-hidden />
+                  {a.workoutName} {a.distanceKm ? `${a.distanceKm} km` : `${Math.round(a.duration / 60)} min`}
+                  <button className="-my-1 ml-0.5 grid size-9 place-items-center rounded-full hover:bg-sand" aria-label={`Remove ${a.workoutName}`} onClick={() => setRemoving(a)}><X size={13} /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </motion.section>
 
-      {nudge && <p className="mt-4 rounded-2xl border border-clay/40 px-5 py-3 text-ink-soft">It’s past {prefs.reminder.time}, your reminder time. There’s still plenty of today left for {w!.name.toLowerCase()}.</p>}
-
-      <div className="mt-14 grid gap-12 md:grid-cols-[1.25fr_1fr] md:gap-16">
-        <section aria-labelledby="week-title">
-          <div className="flex items-baseline justify-between gap-4">
-            <h2 id="week-title" className="display text-2xl">This week</h2>
-            <span className="num text-sm text-ink-soft">{stats.week.scheduled ? `${stats.week.scheduledDone} of ${stats.week.scheduled} planned days so far` : 'Your first week starts here'}</span>
+        {/* Week */}
+        <motion.section {...rise(0.2)} aria-labelledby="week-title" className="card p-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="week-title" className="text-xl font-semibold">This week</h2>
+            <span className="chip bg-mint text-forest num">
+              {stats.week.scheduled ? `${stats.week.scheduledDone} of ${stats.week.scheduled} planned` : 'First week'}
+            </span>
           </div>
-          <div className="mt-6"><WeekStrip days={stats.week.days} today={today} /></div>
-          <p className="mt-6 text-sm text-ink-soft">
-            Filled circles are workouts done. Dashes are rest days. Missed days don’t erase anything. Just pick up from today.
-          </p>
-        </section>
+          <div className="mt-5"><WeekStrip days={stats.week.days} today={today} /></div>
+          <p className="mt-4 text-sm text-ink-soft">Rest days never break your streak. Missed a day? Just pick up from today.</p>
+        </motion.section>
 
-        <section aria-labelledby="streak-title" className="flex items-center gap-6">
-          <Rings count={stats.streak} size={150} />
-          <div>
-            <h2 id="streak-title" className="sr-only">Streak</h2>
-            <p className="num font-display text-6xl leading-none">{stats.streak}</p>
-            <p className="mt-1 font-semibold">{stats.streak === 1 ? 'workout day in a row' : 'workout days in a row'}</p>
-            <p className="mt-3 text-sm text-ink-soft">
-              {stats.streak === 0 ? 'One workout is all it takes to begin.' : milestone ? MILESTONES[milestone] : 'Each ring is a day you showed up.'}
-            </p>
-            <dl className="num mt-4 flex gap-4 text-sm sm:gap-6">
-              <div><dt className="text-ink-soft">Longest</dt><dd className="text-lg font-bold">{stats.longest}</dd></div>
-              <div><dt className="text-ink-soft">Total</dt><dd className="text-lg font-bold">{history.sessions.length}</dd></div>
-              <div><dt className="text-ink-soft">This week</dt><dd className="text-lg font-bold">{stats.week.consistency}%</dd></div>
-            </dl>
-          </div>
-        </section>
+        {/* Shortcuts */}
+        <motion.nav {...rise(0.3)} aria-label="Shortcuts" className="grid grid-cols-2 gap-3">
+          {[
+            { label: 'Workout history', to: '/history', icon: CalendarDays, tone: 'bg-mint text-forest' },
+            { label: 'Your progress', to: '/progress', icon: Sprout, tone: 'bg-sand text-moss' },
+            { label: 'Create a workout', to: '/workouts/new', icon: PenLine, tone: 'bg-apricot/20 text-clay' },
+            { label: 'Browse workouts', to: '/workouts', icon: Zap, tone: 'bg-sage/40 text-forest-deep' },
+          ].map(({ label, to, icon: Icon, tone }) => (
+            <Link key={to} to={to} className="flex items-center gap-3 rounded-3xl bg-linen p-4 font-semibold shadow-soft transition-transform hover:-translate-y-0.5">
+              <span className={`grid size-10 shrink-0 place-items-center rounded-2xl ${tone}`}><Icon size={19} aria-hidden /></span>
+              <span className="leading-tight">{label}</span>
+            </Link>
+          ))}
+        </motion.nav>
       </div>
 
-      <nav aria-label="Shortcuts" className="mt-16 grid border-t border-rule sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: w ? 'Start today’s workout' : 'Browse workouts', to: w ? undefined : '/workouts', icon: Dumbbell, onClick: w ? () => start(active?.workout ?? w) : undefined },
-          { label: 'Workout history', to: '/history', icon: CalendarDays },
-          { label: 'Your progress', to: '/progress', icon: Sprout },
-          { label: 'Create a workout', to: '/workouts/new', icon: PenLine },
-        ].map(({ label, to, icon: Icon, onClick }) => {
-          const cls = 'flex min-h-16 w-full items-center gap-3 border-b border-rule py-4 text-left font-semibold hover:text-clay lg:border-b-0 lg:border-r lg:px-5 lg:first:pl-0 lg:last:border-r-0'
-          const body = <><Icon size={20} className="text-moss" aria-hidden />{label}</>
-          return to ? <Link key={label} to={to} className={cls}>{body}</Link> : <button key={label} onClick={onClick} className={cls}>{body}</button>
-        })}
-      </nav>
+      <Confirm open={!!removing} onClose={() => setRemoving(null)} danger action="Remove" title={`Remove ${removing?.workoutName.toLowerCase() ?? 'activity'}?`}
+        body="It will be taken out of today’s log and your streak is recalculated."
+        onConfirm={() => removing && attempt(() => deleteSession(removing.id), 'Removed')} />
+      <Dialog open={adding} onClose={() => setAdding(false)} title="Add an activity">
+        <AddActivity onDone={() => setAdding(false)} />
+      </Dialog>
     </div>
   )
 }

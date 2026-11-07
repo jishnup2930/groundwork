@@ -20,8 +20,8 @@ export default defineConfig({
         name: 'Groundwork — your fitness journal',
         short_name: 'Groundwork',
         description: 'A personal workout companion that keeps everything on your device.',
-        theme_color: '#1F3B2D',
-        background_color: '#EFE8DA',
+        theme_color: '#305742',
+        background_color: '#FBF2E9',
         display: 'standalone',
         start_url: base,
         scope: base.replace(/(.)\/$/, '$1'), // '/repo' too, which is where the router's home link points

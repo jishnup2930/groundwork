@@ -1,5 +1,6 @@
 import { Component, lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { MotionConfig } from 'motion/react'
 import { Layout } from './components/Layout'
 import { Toaster } from './components/ui'
 import { setbackLine } from './data/messages'
@@ -9,8 +10,6 @@ import { Dashboard } from './pages/Dashboard'
 import { Workouts } from './pages/Workouts'
 import { WorkoutDetail } from './pages/WorkoutDetail'
 import { Builder } from './pages/Builder'
-import { Player } from './pages/Player'
-import { Complete } from './pages/Complete'
 import { History } from './pages/History'
 // Recharts is large; only load it when someone opens Progress.
 const Progress = lazy(() => import('./pages/Progress').then((m) => ({ default: m.Progress })))
@@ -63,8 +62,6 @@ function Gate() {
     )
   return (
     <Routes>
-      <Route path="/session" element={<Player />} />
-      <Route path="/session/done/:id" element={<Complete />} />
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="/workouts" element={<Workouts />} />
@@ -83,10 +80,13 @@ function Gate() {
 export function App() {
   return (
     <ErrorBoundary>
+      {/* Honour the OS "reduce motion" setting for every animation */}
+      <MotionConfig reducedMotion="user">
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
         <Gate />
         <Toaster />
       </BrowserRouter>
+      </MotionConfig>
     </ErrorBoundary>
   )
 }

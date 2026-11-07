@@ -71,6 +71,23 @@ export const MOVES: Record<string, Move> = {
     b: with_(STAND, { 4: [55,37], 5: [50,48], 6: [65,37], 7: [73,45], 8: [78,55], 9: [77,74] }),
   },
   stand: { a: FRONT, b: with_(FRONT, { 1: [60,24] }) },
+  walk: {
+    a: with_(STAND, { 4: [55,37], 5: [52,49], 6: [65,37], 7: [70,48], 8: [66,71], 9: [70,90], 10: [55,72], 11: [48,89] }),
+    b: with_(STAND, { 4: [65,37], 5: [70,48], 6: [55,37], 7: [52,49], 8: [55,72], 9: [48,89], 10: [66,71], 11: [70,90] }),
+  },
+  pushup: {
+    a: [88.2,60.2, 80,64, 68,69.5, 56.3,75, 80,77.5, 80,91, 78,77.5, 78,91, 40,82.5, 24,90, 42,82.5, 26,90],
+    b: [88.8,76.1, 80,78, 68.8,80.4, 57.6,82.8, 72,84, 80,91, 70,85, 78,91, 40.8,86.4, 24,90, 42.8,86.4, 26,90],
+  },
+  yoga: {
+    a: with_(FRONT, { 4: [53,13], 5: [60,2], 6: [67,13], 7: [60,2], 8: [46,66], 9: [59,68], 10: [61,72], 11: [61,91] }),
+    b: with_(FRONT, { 4: [51,38], 5: [60,36], 6: [69,38], 7: [60,36], 8: [46,66], 9: [59,68], 10: [61,72], 11: [61,91] }),
+  },
+  meditate: {
+    a: [60,45, 60,54, 60,68, 60,82, 50,68, 42,84, 70,68, 78,84, 40,88, 62,90, 80,88, 58,90],
+    b: [60,44, 60,53, 60,67, 60,82, 50,67, 42,84, 70,67, 78,84, 40,88, 62,90, 80,88, 58,90],
+  },
+  celebrate: { a: FRONT, b: with_(FRONT, { 0: [60,14], 4: [50,15], 5: [44,3], 6: [70,15], 7: [76,3] }) },
   stepJack: { a: FRONT, b: with_(FRONT, { 4: [52,15], 5: [45,4], 6: [68,15], 7: [75,4], 10: [68,72], 11: [74,91] }) },
 }
 
@@ -93,8 +110,8 @@ interface Props {
   animate?: boolean
   className?: string
   title?: string
-  /** colour of the figure's lines; defaults to the ink token */
-  tone?: 'ink' | 'paper'
+  /** ink: line drawing; paper: light lines on dark; scene: fuller figure for illustrated scenes */
+  tone?: 'ink' | 'paper' | 'scene'
 }
 
 export function Figure({ move = 'stand', animate = false, className = '', title, tone = 'ink' }: Props) {
@@ -102,11 +119,13 @@ export function Figure({ move = 'stand', animate = false, className = '', title,
   const m = MOVES[move] ?? MOVES.stand
   const anim = animate && !reduced
   const pose = anim ? m.a : m.b // when still, show the "doing it" position
-  const line = tone === 'paper' ? 'var(--color-on-forest)' : 'var(--color-ink)'
+  const scene = tone === 'scene'
+  const line = tone === 'paper' ? 'var(--color-on-forest)' : scene ? 'var(--color-forest)' : 'var(--color-ink)'
   const spline = { dur: '2.6s', repeatCount: 'indefinite', calcMode: 'spline', keyTimes: '0;0.5;1', keySplines: '.45 0 .55 1;.45 0 .55 1' }
 
   const limb = (key: keyof typeof LIMBS, far = false) => (
-    <polyline key={key} points={pts(pose, LIMBS[key])} opacity={far ? 0.38 : 1}>
+    <polyline key={key} points={pts(pose, LIMBS[key])} opacity={far && !scene ? 0.38 : 1}
+      stroke={far && scene ? 'var(--color-sage)' : undefined} strokeWidth={scene ? (key === 'torso' ? 9 : 6) : undefined}>
       {anim && <animate attributeName="points" values={`${pts(m.a, LIMBS[key])};${pts(m.b, LIMBS[key])};${pts(m.a, LIMBS[key])}`} {...spline} />}
     </polyline>
   )
@@ -114,7 +133,7 @@ export function Figure({ move = 'stand', animate = false, className = '', title,
   return (
     <svg viewBox="0 0 120 100" className={className} role={title ? 'img' : undefined} aria-hidden={title ? undefined : true}>
       {title && <title>{title}</title>}
-      <line x1="4" y1="93.5" x2="116" y2="93.5" stroke="var(--color-rule)" strokeWidth="1.5" strokeLinecap="round" />
+      {!scene && <line x1="4" y1="93.5" x2="116" y2="93.5" stroke="var(--color-rule)" strokeWidth="1.5" strokeLinecap="round" />}
       {m.prop === 'wall' && <line x1="96" y1="8" x2="96" y2="93" stroke="var(--color-rule)" strokeWidth="3" strokeLinecap="round" />}
       {m.prop === 'bench' && <rect x="84" y="71" width="24" height="22" rx="2" fill="var(--color-sand)" />}
       <g fill="none" stroke={line} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round">
@@ -124,7 +143,7 @@ export function Figure({ move = 'stand', animate = false, className = '', title,
         {limb('nearLeg')}
         {limb('nearArm')}
       </g>
-      <circle cx={pose[0]} cy={pose[1]} r="6.5" fill="var(--color-clay)">
+      <circle cx={pose[0]} cy={pose[1]} r={scene ? 7.5 : 6.5} fill="var(--color-clay)">
         {anim && (
           <>
             <animate attributeName="cx" values={`${m.a[0]};${m.b[0]};${m.a[0]}`} {...spline} />

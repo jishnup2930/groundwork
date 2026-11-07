@@ -106,7 +106,7 @@ export function Builder() {
         </label>
         <label className="block"><span className="label">Category</span>
           <select className="field" value={category} onChange={(e) => setCategory(e.target.value as Category)}>
-            {Object.entries(CATEGORY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {Object.entries(CATEGORY_LABEL).filter(([v]) => v !== 'activity').map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </label>
         <label className="block"><span className="label">Difficulty</span>

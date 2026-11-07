@@ -1,6 +1,6 @@
 import type { AppSettings, ScheduleVersion, UserProfile, WeightEntry, Workout, WorkoutSession } from '../types'
 import { db, SCHEMA_VERSION } from './db'
-import { getPrefs, setPrefs } from './prefs'
+import { getPrefs, migratePrefs, setPrefs } from './prefs'
 
 export interface Backup {
   app: 'groundwork'
@@ -47,20 +47,22 @@ export function parseBackup(text: string): Backup {
     isArr(raw.customWorkouts, (w) => typeof w.id === 'string' && typeof w.name === 'string' && Array.isArray(w.exercises)) &&
     isArr(raw.schedules, (s) => isDate(s.effectiveFrom) && Array.isArray(s.days) && (s.days as unknown[]).length === 7)
   if (!ok) throw new Error('Some records in this file are damaged or incomplete, so nothing was imported.')
+  // Only accept an embedded image as the avatar, never a link the app would fetch.
+  if (p && p.avatar !== undefined && !(typeof p.avatar === 'string' && /^data:image\/(webp|png|jpeg);base64,/.test(p.avatar))) delete p.avatar
   return raw as unknown as Backup
 }
 
 /** Replaces everything on this device with the backup. Callers must confirm with the user first. */
 export async function importData(b: Backup) {
-  await db.transaction('rw', [db.profile, db.sessions, db.weights, db.customWorkouts, db.schedules, db.active], async () => {
-    await Promise.all([db.profile.clear(), db.sessions.clear(), db.weights.clear(), db.customWorkouts.clear(), db.schedules.clear(), db.active.clear()])
+  await db.transaction('rw', [db.profile, db.sessions, db.weights, db.customWorkouts, db.schedules], async () => {
+    await Promise.all([db.profile.clear(), db.sessions.clear(), db.weights.clear(), db.customWorkouts.clear(), db.schedules.clear()])
     if (b.profile) await db.profile.put({ ...b.profile, id: 'me' })
     await db.sessions.bulkPut(b.sessions)
     await db.weights.bulkPut(b.weights)
     await db.customWorkouts.bulkPut(b.customWorkouts)
     await db.schedules.bulkPut(b.schedules)
   })
-  if (b.settings) setPrefs(b.settings)
+  if (b.settings) setPrefs(migratePrefs(b.settings))
 }
 
 export function downloadJSON(data: unknown, filename: string) {
