@@ -14,9 +14,14 @@ const NAV = [
 export function Wordmark({ className = '', light = false }: { className?: string; light?: boolean }) {
   return (
     <span className={`inline-flex items-center gap-2 font-display text-2xl font-semibold tracking-tight ${light ? 'text-on-forest' : 'text-ink'} ${className}`}>
-      <svg viewBox="0 0 32 32" className="size-7" aria-hidden>
-        <circle cx="16" cy="12" r="5" fill="var(--color-apricot)" />
-        <path d="M4 22c4-2.5 8-2.5 12 0s8 2.5 12 0" fill="none" stroke={light ? 'var(--color-sage)' : 'var(--color-forest)'} strokeWidth="2.6" strokeLinecap="round" />
+      {/* Same walker as public/icon.svg; inverted on the dark sidebar so the tile stays visible */}
+      <svg viewBox="0 0 512 512" className="size-8" aria-hidden>
+        <rect width="512" height="512" rx="112" fill={light ? '#fff' : '#000'} />
+        <g fill="none" stroke={light ? '#000' : '#fff'} strokeWidth="40" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M262 186 L240 296" /><path d="M240 296 L292 352 L318 428" /><path d="M240 296 L214 364 L166 412" />
+          <path d="M258 206 L306 254 L346 240" /><path d="M258 206 L216 252 L200 300" />
+        </g>
+        <circle cx="276" cy="124" r="40" fill={light ? '#000' : '#fff'} />
       </svg>
       Groundwork
     </span>
